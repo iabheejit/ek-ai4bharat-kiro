@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ekatra Admin</title>
+<style>
+  :root { --bg: #0f172a; --card: #1e293b; --border: #334155; --text: #e2e8f0; --muted: #94a3b8; --accent: #3b82f6; --green: #22c55e; --red: #ef4444; --yellow: #eab308; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  .header { background: var(--card); border-bottom: 1px solid var(--border); padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .header h1 { font-size: 20px; font-weight: 600; }
+  .header h1 span { color: var(--accent); }
+  .tabs { display: flex; gap: 4px; background: var(--bg); border-radius: 8px; padding: 4px; }
+  .tab { padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; color: var(--muted); border: none; background: none; transition: all .2s; }
+  .tab.active { background: var(--accent); color: #fff; }
+  .tab:hover:not(.active) { color: var(--text); background: var(--border); }
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .card h2 { font-size: 16px; margin-bottom: 16px; color: var(--accent); }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .form-row.full { grid-template-columns: 1fr; }
+  label { font-size: 12px; color: var(--muted); margin-bottom: 4px; display: block; }
+  input, select, textarea { width: 100%; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; outline: none; }
+  input:focus, textarea:focus { border-color: var(--accent); }
+  textarea { min-height: 100px; resize: vertical; font-family: inherit; }
+  .btn { padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; font-size: 14px; font-weight: 500; transition: all .2s; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #2563eb; }
+  .btn-green { background: var(--green); color: #fff; }
+  .btn-green:hover { background: #16a34a; }
+  .btn-red { background: var(--red); color: #fff; font-size: 12px; padding: 6px 12px; }
+  .btn-red:hover { background: #dc2626; }
+  .btn-sm { padding: 6px 14px; font-size: 12px; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 10px 12px; color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 500; }
+  .badge-green { background: #16a34a33; color: var(--green); }
+  .badge-yellow { background: #eab30833; color: var(--yellow); }
+  .badge-blue { background: #3b82f633; color: var(--accent); }
+  .badge-red { background: #ef444433; color: var(--red); }
+  .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 8px; color: #fff; font-size: 14px; z-index: 999; animation: slideIn .3s; }
+  .toast.ok { background: var(--green); }
+  .toast.err { background: var(--red); }
+  @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  .day-block { border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .day-block h3 { font-size: 14px; margin-bottom: 12px; color: var(--yellow); }
+  .module-block { background: var(--bg); border-radius: 8px; padding: 12px; margin-bottom: 8px; }
+  .module-block h4 { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .file-row { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+  .file-row input { flex: 1; }
+  .timeline { position: relative; padding-left: 24px; }
+  .timeline::before { content: ''; position: absolute; left: 8px; top: 0; bottom: 0; width: 2px; background: var(--border); }
+  .tl-item { position: relative; margin-bottom: 12px; padding: 8px 12px; background: var(--bg); border-radius: 8px; font-size: 13px; }
+  .tl-item::before { content: ''; position: absolute; left: -20px; top: 14px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+  .tl-step { color: var(--accent); font-weight: 600; }
+  .tl-time { color: var(--muted); font-size: 11px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .stat { background: var(--bg); border-radius: 8px; padding: 16px; text-align: center; }
+  .stat .num { font-size: 28px; font-weight: 700; color: var(--accent); }
+  .stat .lbl { font-size: 11px; color: var(--muted); margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>📚 <span>Ekatra</span> Admin</h1>
+  <div class="tabs">
+    <button class="tab active" onclick="showPanel('students')">Students</button>
+    <button class="tab" onclick="showPanel('courses')">Courses</button>
+    <button class="tab" onclick="showPanel('logs')">Flow Logs</button>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- ═══ STUDENTS PANEL ═══ -->
+<div id="panel-students" class="panel active">
+  <div class="stats" id="stats"></div>
+
+  <div class="card">
+    <h2>➕ Add Student</h2>
+    <div class="form-row">
+      <div><label>Name</label><input id="s-name" placeholder="John Doe"></div>
+      <div><label>Phone (with country code)</label><input id="s-phone" placeholder="919876543210"></div>
+    </div>
+    <div class="form-row">
+      <div><label>Course Topic</label><input id="s-topic" placeholder="JavaScript"></div>
+      <div style="display:flex;align-items:end;gap:8px;">
+        <button class="btn btn-primary" onclick="addStudent()">Add Student</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>👥 Students</h2>
+    <table>
+      <thead><tr><th>Name</th><th>Phone</th><th>Topic</th><th>Progress</th><th>Flow</th><th>Actions</th></tr></thead>
+      <tbody id="student-table"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══ COURSES PANEL ═══ -->
+<div id="panel-courses" class="panel">
+  <div class="card">
+    <h2>📝 Create / Edit Course</h2>
+    <div class="form-row">
+      <div>
+        <label>Student</label>
+        <select id="c-student" onchange="loadStudentCourse()">
+          <option value="">Select a student...</option>
+        </select>
+      </div>
+      <div><label>Number of Days</label>
+        <select id="c-days" onchange="renderDayForms()">
+          <option value="3" selected>3 days</option>
+          <option value="5">5 days</option>
+          <option value="7">7 days</option>
+        </select>
+      </div>
+    </div>
+    <div id="day-forms"></div>
+    <button class="btn btn-primary" onclick="saveCourse()" style="margin-top:12px">💾 Save Course</button>
+  </div>
+</div>
+
+<!-- ═══ FLOW LOGS PANEL ═══ -->
+<div id="panel-logs" class="panel">
+  <div class="card">
+    <h2>📊 Conversation Flow Logs</h2>
+    <div class="form-row">
+      <div>
+        <label>Student</label>
+        <select id="l-student" onchange="loadLogs()">
+          <option value="">Select a student...</option>
+        </select>
+      </div>
+    </div>
+    <div id="log-timeline" class="timeline" style="margin-top:16px"></div>
+  </div>
+</div>
+
+</div><!-- /container -->
+
+<script>
+const API = '';  // same origin
+
+// ─── Toast ───
+function toast(msg, ok = true) {
+  const t = document.createElement('div');
+  t.className = 'toast ' + (ok ? 'ok' : 'err');
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+// ─── Tabs ───
+function showPanel(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  event.target.classList.add('active');
+  if (name === 'courses' || name === 'logs') populateStudentDropdowns();
+}
+
+// ─── Students ───
+let students = [];
+
+async function loadStudents() {
+  const res = await fetch(API + '/api/students');
+  students = await res.json();
+  renderStudents();
+  renderStats();
+  populateStudentDropdowns();
+}
+
+function renderStats() {
+  const total = students.length;
+  const pending = students.filter(s => s.progress === 'Pending').length;
+  const completed = students.filter(s => s.progress === 'Completed').length;
+  const active = students.filter(s => s.flowStep && s.flowStep !== 'idle' && s.flowStep !== 'course_complete').length;
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><div class="num">${total}</div><div class="lbl">Total Students</div></div>
+    <div class="stat"><div class="num">${pending}</div><div class="lbl">In Progress</div></div>
+    <div class="stat"><div class="num">${completed}</div><div class="lbl">Completed</div></div>
+    <div class="stat"><div class="num">${active}</div><div class="lbl">Active Now</div></div>
+  `;
+}
+
+function flowBadge(step) {
+  const colors = { idle: 'blue', awaiting_start: 'yellow', awaiting_next: 'green', awaiting_doubt_answer: 'yellow', doubt_mode: 'red', course_complete: 'green' };
+  return `<span class="badge badge-${colors[step] || 'blue'}">${step || 'idle'}</span>`;
+}
+
+function renderStudents() {
+  const tb = document.getElementById('student-table');
+  tb.innerHTML = students.map(s => `<tr>
+    <td><strong>${s.name}</strong></td>
+    <td>${s.phone}</td>
+    <td>${s.topic}</td>
+    <td>Day ${s.nextDay} / Mod ${s.nextModule}<br><span class="badge badge-${s.progress==='Completed'?'green':'yellow'}">${s.progress}</span></td>
+    <td>${flowBadge(s.flowStep)}</td>
+    <td>
+      <button class="btn btn-green btn-sm" onclick="sendWelcome('${s.phone}')" title="Send daily_reminder template">📨 Send Template</button>
+      <button class="btn btn-red btn-sm" onclick="deleteStudent('${s._id}')" title="Delete">🗑</button>
+    </td>
+  </tr>`).join('');
+}
+
+async function addStudent() {
+  const name = document.getElementById('s-name').value.trim();
+  const phone = document.getElementById('s-phone').value.trim();
+  const topic = document.getElementById('s-topic').value.trim();
+  if (!name || !phone || !topic) return toast('Fill all fields', false);
+
+  const res = await fetch(API + '/api/students', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, phone, topic })
+  });
+  const data = await res.json();
+  if (!res.ok) return toast(data.error, false);
+  toast(`Student ${name} added!`);
+  document.getElementById('s-name').value = '';
+  document.getElementById('s-phone').value = '';
+  loadStudents();
+}
+
+async function deleteStudent(id) {
+  if (!confirm('Delete this student?')) return;
+  await fetch(API + '/api/students/' + id, { method: 'DELETE' });
+  toast('Student deleted');
+  loadStudents();
+}
+
+async function sendWelcome(phone) {
+  const res = await fetch(API + '/api/send-welcome', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone })
+  });
+  const data = await res.json();
+  if (!res.ok) return toast(data.error, false);
+  toast(data.message);
+}
+
+// ─── Courses ───
+function populateStudentDropdowns() {
+  ['c-student', 'l-student'].forEach(id => {
+    const sel = document.getElementById(id);
+    const val = sel.value;
+    sel.innerHTML = '<option value="">Select a student...</option>' +
+      students.map(s => `<option value="${s.phone}">${s.name} (${s.phone}) — ${s.topic}</option>`).join('');
+    sel.value = val;
+  });
+}
+
+function renderDayForms(existingDays) {
+  const numDays = parseInt(document.getElementById('c-days').value) || 3;
+  const container = document.getElementById('day-forms');
+  let html = '';
+  for (let d = 1; d <= numDays; d++) {
+    const dayData = existingDays?.find(x => x.day === d);
+    html += `<div class="day-block"><h3>📅 Day ${d}</h3>`;
+    for (let m = 1; m <= 3; m++) {
+      const mod = dayData?.modules?.[m - 1] || {};
+      const files = mod.files || [];
+      html += `<div class="module-block">
+        <h4>Module ${m}</h4>
+        <label>Content</label>
+        <textarea id="d${d}m${m}-text" placeholder="Module content (text, emojis, formatting...)">${mod.text || ''}</textarea>
+        <div class="file-row">
+          <div style="flex:1"><label>File URL (image/PDF)</label><input id="d${d}m${m}-file-url" placeholder="https://..." value="${files[0]?.url || ''}"></div>
+          <div style="width:150px"><label>Filename</label><input id="d${d}m${m}-file-name" placeholder="image.jpg" value="${files[0]?.filename || ''}"></div>
+        </div>
+      </div>`;
+    }
+    html += '</div>';
+  }
+  container.innerHTML = html;
+}
+
+async function loadStudentCourse() {
+  const phone = document.getElementById('c-student').value;
+  if (!phone) { renderDayForms(); return; }
+  const res = await fetch(API + '/api/courses/' + phone);
+  const days = await res.json();
+  if (days.length > 0) {
+    document.getElementById('c-days').value = days.length;
+    renderDayForms(days);
+    toast(`Loaded ${days.length} days of content`);
+  } else {
+    renderDayForms();
+    toast('No existing content — create new', false);
+  }
+}
+
+async function saveCourse() {
+  const phone = document.getElementById('c-student').value;
+  if (!phone) return toast('Select a student first', false);
+  const student = students.find(s => s.phone === phone);
+  const numDays = parseInt(document.getElementById('c-days').value) || 3;
+
+  const days = [];
+  for (let d = 1; d <= numDays; d++) {
+    const modules = [];
+    for (let m = 1; m <= 3; m++) {
+      const text = document.getElementById(`d${d}m${m}-text`)?.value || '';
+      const fileUrl = document.getElementById(`d${d}m${m}-file-url`)?.value || '';
+      const fileName = document.getElementById(`d${d}m${m}-file-name`)?.value || '';
+      const mod = { text };
+      if (fileUrl) mod.files = [{ url: fileUrl, filename: fileName || 'file' }];
+      modules.push(mod);
+    }
+    days.push({ day: d, modules });
+  }
+
+  const res = await fetch(API + '/api/courses', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ studentPhone: phone, topic: student.topic, days })
+  });
+  if (!res.ok) { const e = await res.json(); return toast(e.error, false); }
+  toast(`Course saved! ${numDays} days × 3 modules`);
+}
+
+// ─── Flow Logs ───
+async function loadLogs() {
+  const phone = document.getElementById('l-student').value;
+  if (!phone) { document.getElementById('log-timeline').innerHTML = ''; return; }
+  const res = await fetch(API + '/api/logs/' + phone);
+  const logs = await res.json();
+  const tl = document.getElementById('log-timeline');
+  if (logs.length === 0) { tl.innerHTML = '<p style="color:var(--muted)">No flow transitions yet.</p>'; return; }
+  tl.innerHTML = logs.map(l => {
+    const t = new Date(l.timestamp).toLocaleString();
+    return `<div class="tl-item">
+      <span class="tl-step">${l.fromStep}</span> → <span class="tl-step">${l.toStep}</span>
+      <br><small>Trigger: <strong>${l.trigger}</strong> | Day ${l.day} Mod ${l.module}</small>
+      ${l.userMessage ? `<br><small style="color:var(--muted)">User: "${l.userMessage}"</small>` : ''}
+      <div class="tl-time">${t}</div>
+    </div>`;
+  }).join('');
+}
+
+// ─── Init ───
+renderDayForms();
+loadStudents();
+setInterval(loadStudents, 30000);
+</script>
+</body>
+</html>

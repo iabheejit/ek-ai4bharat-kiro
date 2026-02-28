@@ -1,0 +1,77 @@
+{
+  "family": "socrates-ek",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/ecsTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "socrates-ek",
+      "image": "<ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/socrates-ek:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "NODE_ENV",
+          "value": "production"
+        },
+        {
+          "name": "PORT",
+          "value": "3000"
+        },
+        {
+          "name": "TZ",
+          "value": "Asia/Kolkata"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "MONGODB_URI",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:<ACCOUNT_ID>:secret:socrates-ek/production:MONGODB_URI::"
+        },
+        {
+          "name": "TWILIO_ACCOUNT_SID",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:<ACCOUNT_ID>:secret:socrates-ek/production:TWILIO_ACCOUNT_SID::"
+        },
+        {
+          "name": "TWILIO_AUTH_TOKEN",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:<ACCOUNT_ID>:secret:socrates-ek/production:TWILIO_AUTH_TOKEN::"
+        },
+        {
+          "name": "TWILIO_WHATSAPP_NUMBER",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:<ACCOUNT_ID>:secret:socrates-ek/production:TWILIO_WHATSAPP_NUMBER::"
+        },
+        {
+          "name": "AWS_BEDROCK_MODEL_ID",
+          "value": "meta.llama3-70b-instruct-v1:0"
+        },
+        {
+          "name": "AWS_S3_BUCKET",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:<ACCOUNT_ID>:secret:socrates-ek/production:AWS_S3_BUCKET::"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/socrates-ek",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      }
+    }
+  ]
+}

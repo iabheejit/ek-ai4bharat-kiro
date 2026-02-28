@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: socrates-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      - TZ=Asia/Kolkata
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: socrates-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/socrates
+      - TZ=Asia/Kolkata
+      - NODE_ENV=production
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+
+  # Optional: MongoDB admin UI
+  mongo-express:
+    image: mongo-express:1
+    container_name: socrates-mongo-express
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - ME_CONFIG_MONGODB_URL=mongodb://mongodb:27017/
+      - ME_CONFIG_BASICAUTH=false
+      - TZ=Asia/Kolkata
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    profiles:
+      - admin
+
+volumes:
+  mongo_data:
+
+networks:
+  default:
+    name: socrates-network
