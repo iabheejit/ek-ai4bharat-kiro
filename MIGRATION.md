@@ -156,7 +156,7 @@ Migrate the Socrates-EK WhatsApp learning platform from Airtable to local MongoD
   eventType: "message", type: "interactive" }
 
 // Twilio incoming webhook (new)  
-{ From: "whatsapp:+919876543210", Body: "hello", ProfileName: "John",
+{ From: "whatsapp:+1XXXXXXXXXX", Body: "hello", ProfileName: "John",
   ButtonText: "Start Day", ListReply: '{"id":"opt1","title":"Option A"}',
   SmsMessageSid: "SM...", NumMedia: "0" }
 ```
@@ -202,7 +202,7 @@ port=3000
 MONGODB_URI=mongodb://localhost:27017/socrates
 TWILIO_ACCOUNT_SID=AC...
 TWILIO_AUTH_TOKEN=...
-TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
+TWILIO_WHATSAPP_NUMBER=whatsapp:+1XXXXXXXXXX
 AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...

@@ -106,7 +106,7 @@ aws secretsmanager create-secret \
     "MONGODB_URI": "mongodb://...",
     "TWILIO_ACCOUNT_SID": "AC...",
     "TWILIO_AUTH_TOKEN": "...",
-    "TWILIO_WHATSAPP_NUMBER": "whatsapp:+14155238886",
+    "TWILIO_WHATSAPP_NUMBER": "whatsapp:+1XXXXXXXXXX",
     "AWS_REGION": "us-east-1",
     "AWS_ACCESS_KEY_ID": "...",
     "AWS_SECRET_ACCESS_KEY": "...",
@@ -201,7 +201,7 @@ MONGODB_URI=mongodb://...
 # Twilio
 TWILIO_ACCOUNT_SID=AC...
 TWILIO_AUTH_TOKEN=...
-TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
+TWILIO_WHATSAPP_NUMBER=whatsapp:+1XXXXXXXXXX
 
 # AWS Bedrock
 AWS_REGION=us-east-1
