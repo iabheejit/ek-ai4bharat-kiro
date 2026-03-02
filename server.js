@@ -24,6 +24,13 @@ const { systemMonitor, monitoringMiddleware } = require('./utils/monitoring');
 const express = require('express');
 const cors = require('cors');
 const cron = require('node-cron');
+
+// ─── Mandatory env checks ───
+if (!process.env.ADMIN_API_KEY || process.env.ADMIN_API_KEY.trim() === '') {
+    console.error('FATAL: ADMIN_API_KEY environment variable is required. Set it in .env or environment.');
+    process.exit(1);
+}
+
 const { connectDB } = require('./db');
 const { createCertificate } = require('./certificate');
 const Student = require('./models/Student');
@@ -164,9 +171,7 @@ function normalizeWebhookPayload(body) {
 // ─── Admin API key middleware ───
 const requireAdminKey = (req, res, next) => {
     const key = req.headers['x-admin-key'] || req.query.key;
-    const adminKey = process.env.ADMIN_API_KEY;
-    if (!adminKey || adminKey === '') return next();
-    if (key !== adminKey) {
+    if (key !== process.env.ADMIN_API_KEY) {
         logger.warn('Unauthorized admin access attempt', { ip: req.ip, path: req.path });
         return res.status(401).json({ error: 'Unauthorized' });
     }
