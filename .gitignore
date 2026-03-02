@@ -121,3 +121,10 @@ certificate.*
 *.swp
 *.swo
 *~
+
+# Test scripts with potential sensitive data
+scripts/test_*.js
+scripts/check_*.js
+scripts/fix_*.js
+scripts/add_*.js
+scripts/submit_*.js
