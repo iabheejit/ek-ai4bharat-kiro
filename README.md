@@ -7,6 +7,14 @@
 
 AI-powered WhatsApp learning platform that delivers personalized micro-courses through conversational interfaces. Built for the AI4Bharat initiative to make quality education accessible.
 
+## 🎯 Live Demo
+
+**Admin Dashboard**: [https://ekatra-dashboard.pages.dev](https://ekatra-dashboard.pages.dev)
+
+Experience the admin interface for managing students, courses, and AI-generated content. The dashboard provides real-time monitoring of student progress and course delivery.
+
+> **Note**: Demo credentials are provided for evaluation purposes. In production, implement proper authentication with secure credential management.
+
 ## 🌟 Features
 
 - **🤖 AI Course Generation**: Personalized 3-day courses using AWS Bedrock (Meta Llama 3)
