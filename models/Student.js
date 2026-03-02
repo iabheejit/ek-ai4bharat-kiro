@@ -69,6 +69,10 @@ const studentSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    dayCompletedAt: {
+        type: Date,
+        default: null
+    },
     flowStep: {
         type: String,
         enum: [
@@ -88,6 +92,7 @@ const studentSchema = new mongoose.Schema({
             // ─── Course delivery flow ───
             'idle',                    // Has a course, no active conversation
             'awaiting_start',          // Waiting for "Start Day"
+            'awaiting_next_day',       // Day complete, locked until next calendar day (cron unlocks)
             'awaiting_next',           // Module delivered, waiting for "Next"
             'awaiting_doubt_answer',   // Day complete, "Any doubts? Yes/No"
             'doubt_mode',              // Waiting for doubt question

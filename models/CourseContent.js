@@ -28,6 +28,11 @@ const courseContentSchema = new mongoose.Schema({
         type: Number,
         required: true
     },
+    isTemplate: {
+        type: Boolean,
+        default: false,
+        index: true
+    },
     modules: {
         type: [moduleSchema],
         default: () => [{}, {}, {}] // 3 modules per day

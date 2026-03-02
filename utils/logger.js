@@ -2,11 +2,18 @@ const winston = require('winston');
 const path = require('path');
 const fs = require('fs');
 
+// Prevent MaxListenersExceeded warnings from multiple Winston loggers
+// Each createLogger() call would add exception/rejection handlers; we share them instead
+process.setMaxListeners(25);
+
 // Create logs directory
 const logsDir = path.join(__dirname, '..', 'logs');
 if (!fs.existsSync(logsDir)) {
     fs.mkdirSync(logsDir, { recursive: true });
 }
+
+// Shared exception/rejection handlers — registered once, shared across loggers
+let sharedExceptionHandlersRegistered = false;
 
 // Sensitive fields to redact in logs
 const SENSITIVE_FIELDS = [
@@ -33,7 +40,7 @@ function sanitizeData(data) {
 }
 
 function createLogger(moduleName) {
-    const logger = winston.createLogger({
+    const loggerOpts = {
         level: process.env.LOG_LEVEL || 'info',
         format: winston.format.combine(
             winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
@@ -63,13 +70,20 @@ function createLogger(moduleName) {
                 maxFiles: 5
             })
         ],
-        exceptionHandlers: [
+    };
+
+    // Only the first logger registers exception/rejection handlers to avoid listener leaks
+    if (!sharedExceptionHandlersRegistered) {
+        loggerOpts.exceptionHandlers = [
             new winston.transports.File({ filename: path.join(logsDir, 'exceptions.log') })
-        ],
-        rejectionHandlers: [
+        ];
+        loggerOpts.rejectionHandlers = [
             new winston.transports.File({ filename: path.join(logsDir, 'rejections.log') })
-        ]
-    });
+        ];
+        sharedExceptionHandlersRegistered = true;
+    }
+
+    const logger = winston.createLogger(loggerOpts);
 
     return {
         info: (message, meta = {}) => logger.info(message, sanitizeData(meta)),

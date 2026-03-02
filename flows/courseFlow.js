@@ -22,15 +22,178 @@ const WA = require('../twilio_whatsapp');
 const { solveUserQuery, generateForStudent } = require('../llama');
 const { createCertificate } = require('../certificate');
 const { createLogger } = require('../utils/logger');
+const { markdownToWhatsApp } = require('../utils/whatsappFormatter');
+const FlowTemplate = require('../models/FlowTemplate');
 
 const logger = createLogger('flow');
 
 // Pre-built topics shown during onboarding. Last option is always "Generate Course".
 // Topics with pre-built content in DB. "Generate Course" is always appended as last option.
-// Update this list when you add new pre-built courses via the dashboard.
-const AVAILABLE_TOPICS = ['JavaScript', 'Entrepreneurship'];
+// Loaded dynamically from DB (templates with isTemplate=true). Refreshed every 5 minutes.
+let AVAILABLE_TOPICS = ['JavaScript', 'Entrepreneurship']; // fallback defaults
+let _topicsLastFetched = 0;
+const TOPICS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function refreshAvailableTopics() {
+    try {
+        const topics = await CourseContent.distinct('topic', { isTemplate: true });
+        if (topics.length > 0) {
+            AVAILABLE_TOPICS = topics;
+            logger.info('Refreshed available topics from DB', { topics });
+        }
+        _topicsLastFetched = Date.now();
+    } catch (err) {
+        logger.error('Failed to refresh topics from DB', { error: err.message });
+    }
+}
+
+async function getAvailableTopics() {
+    if (Date.now() - _topicsLastFetched > TOPICS_CACHE_TTL) {
+        await refreshAvailableTopics();
+    }
+    return AVAILABLE_TOPICS;
+}
+
+// ═══════════════════════════════════════════════════════════
+// FLOW TEMPLATE DB READER — reads messages from FlowTemplate collection
+// ═══════════════════════════════════════════════════════════
+const _flowCache = new Map();
+const FLOW_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Get a flow template's messages by stepName.
+ * Returns the messages array, or null if not found / inactive.
+ * Uses in-memory cache with 5-minute TTL.
+ * @param {string} stepName
+ * @returns {Promise<Array|null>}
+ */
+async function getFlowMessages(stepName) {
+    const cached = _flowCache.get(stepName);
+    if (cached && Date.now() - cached.ts < FLOW_CACHE_TTL) return cached.data;
+
+    try {
+        const tmpl = await FlowTemplate.findOne({ stepName, isActive: true }).lean();
+        const data = tmpl?.messages || null;
+        _flowCache.set(stepName, { data, ts: Date.now() });
+        return data;
+    } catch (err) {
+        logger.error('Failed to read flow template', { stepName, error: err.message });
+        return null;
+    }
+}
+
+/**
+ * Replace {{variable}} placeholders in a template message text.
+ * @param {string} text
+ * @param {Object} vars - key/value pairs
+ * @returns {string}
+ */
+function interpolate(text, vars) {
+    if (!text || !vars) return text || '';
+    return text.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] !== undefined ? vars[key] : `{{${key}}}`);
+}
+
+/**
+ * Send a flow template's messages via WhatsApp.
+ * Falls back to a callback function if no DB template exists.
+ * @param {string} stepName
+ * @param {string} phone
+ * @param {Object} vars - variable substitutions
+ * @param {Function} [fallback] - function to call if no template in DB
+ */
+async function sendFlowMessages(stepName, phone, vars = {}, fallback = null) {
+    const messages = await getFlowMessages(stepName);
+    if (!messages || messages.length === 0) {
+        if (fallback) return fallback();
+        return;
+    }
+
+    for (const msg of messages) {
+        const text = interpolate(msg.text, vars);
+        if (msg.delay > 0) await delay(msg.delay);
+
+        switch (msg.type) {
+            case 'interactive':
+                await WA.sendInteractiveButtonsMessage(
+                    interpolate(msg.header || '', vars),
+                    text,
+                    msg.buttons?.[0] || 'OK',
+                    phone
+                );
+                break;
+            case 'dual_interactive':
+                await WA.sendInteractiveDualButtonsMessage(
+                    interpolate(msg.header || '', vars),
+                    text,
+                    msg.buttons?.[0] || 'Yes',
+                    msg.buttons?.[1] || 'No',
+                    phone
+                );
+                break;
+            case 'dynamic_interactive':
+                await WA.sendDynamicInteractiveMsg(
+                    (msg.buttons || []).map(b => ({ text: b })),
+                    text,
+                    phone
+                );
+                break;
+            default:
+                await WA.sendText(text, phone);
+        }
+    }
+}
+
+// Varied greetings so 9 modules don't all say the same thing
+const MODULE_GREETINGS = [
+    "Let's dive in! 🚀",
+    "Here we go! 💪",
+    "Ready? Let's learn! 📖",
+    "Time to level up! ⚡",
+    "Let's get into it! 🎯",
+    "Knowledge time! 🧠",
+    "Here's your next lesson! 📝",
+    "Let's keep the momentum! 🔥",
+    "Onward! 🌟",
+];
 
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
+
+// ═══════════════════════════════════════════════════════════
+// FUZZY MATCHING — bigram (Dice coefficient) similarity
+// ═══════════════════════════════════════════════════════════
+
+function bigrams(str) {
+    const s = str.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+    const pairs = new Set();
+    for (let i = 0; i < s.length - 1; i++) pairs.add(s.slice(i, i + 2));
+    return pairs;
+}
+
+function fuzzyScore(a, b) {
+    const setA = bigrams(a);
+    const setB = bigrams(b);
+    if (setA.size === 0 && setB.size === 0) return 1;
+    if (setA.size === 0 || setB.size === 0) return 0;
+    let intersection = 0;
+    for (const bg of setA) if (setB.has(bg)) intersection++;
+    return (2 * intersection) / (setA.size + setB.size);
+}
+
+// Trigger phrases — each has a canonical form and a minimum confidence (0-1)
+const TRIGGER_PHRASES = [
+    { phrase: 'hello tell me about ekatra', minScore: 0.90, action: 'start_onboarding' },
+    { phrase: 'tell me about ekatra', minScore: 0.90, action: 'start_onboarding' },
+    { phrase: 'hi tell me about ekatra', minScore: 0.90, action: 'start_onboarding' },
+];
+
+function matchTriggerPhrase(input) {
+    const cleaned = input.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+    for (const tp of TRIGGER_PHRASES) {
+        const score = fuzzyScore(cleaned, tp.phrase);
+        if (score >= tp.minScore) return { ...tp, score };
+    }
+    return null;
+}
 
 // ═══════════════════════════════════════════════════════════
 // HELPERS
@@ -64,10 +227,13 @@ async function advanceProgress(student) {
 
 async function deliverModule(student) {
     const mod = await getModuleContent(student);
-    if (!mod) { await WA.sendText(`⚠️ Couldn't find content for Day ${student.nextDay}, Module ${student.nextModule}. Type "hi" to check status.`, student.phone); return false; }
-    await WA.sendText(`📚 *Day ${student.nextDay}, Module ${student.nextModule}* — _${student.topic}_\n\nLet's go, ${student.name}! 👇`, student.phone);
+    if (!mod) { await WA.sendText(`⚠️ Couldn't find content for Day ${student.nextDay}, Module ${student.nextModule}. Type "help" for options.`, student.phone); return false; }
+    const greetIdx = ((student.nextDay - 1) * 3 + (student.nextModule - 1)) % MODULE_GREETINGS.length;
+    const greeting = MODULE_GREETINGS[greetIdx];
+    const modulesDone = (student.nextDay - 1) * 3 + (student.nextModule - 1);
+    await WA.sendText(`📚 *Day ${student.nextDay}, Module ${student.nextModule}* — _${student.topic}_\n📊 Progress: ${modulesDone}/9 modules completed\n\n${greeting} ${student.name} 👇`, student.phone);
     await delay(1500);
-    await WA.sendText(mod.text, student.phone);
+    await WA.sendText(markdownToWhatsApp(mod.text), student.phone);
     if (mod.files && mod.files.length > 0) { for (const file of mod.files) { if (file.url) { await delay(1000); await WA.sendFileByUrl(file.url, file.filename || 'file', student.phone); } } }
     await delay(2000);
     await WA.sendInteractiveButtonsMessage(`Module ${student.nextModule} delivered ✅`, `Take your time. Tap *Next* when ready!`, 'Next', student.phone);
@@ -76,16 +242,19 @@ async function deliverModule(student) {
 }
 
 async function copyContentToStudent(student, topic) {
-    const existing = await CourseContent.find({ topic: new RegExp(`^${topic}$`, 'i') }).sort({ day: 1 }).lean();
+    // Only copy from template content (isTemplate: true), not from other students
+    const escaped = topic.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const existing = await CourseContent.find({ topic: new RegExp(`^${escaped}$`, 'i'), isTemplate: true }).sort({ day: 1 }).lean();
     if (existing.length === 0) return false;
     await CourseContent.deleteMany({ studentPhone: student.phone, topic });
     for (const doc of existing) { await CourseContent.create({ studentPhone: student.phone, topic, day: doc.day, modules: doc.modules }); }
-    logger.info('Copied pre-built content', { phone: student.phone, topic, days: existing.length });
+    logger.info('Copied template content to student', { phone: student.phone, topic, days: existing.length });
     return true;
 }
 
 async function sendTopicSelection(phone) {
-    const topicButtons = AVAILABLE_TOPICS.map(t => ({ text: t }));
+    const topics = await getAvailableTopics();
+    const topicButtons = topics.map(t => ({ text: t }));
     topicButtons.push({ text: 'Generate Course' });
     await WA.sendDynamicInteractiveMsg(topicButtons, `Which of these topics would you like to get started with?`, phone);
 }
@@ -101,15 +270,18 @@ async function handleNewUser(student, event) {
         await Student.findByIdAndUpdate(student._id, { name: event.senderName });
         student.name = event.senderName;
     }
-    await WA.sendText(
-        `${name}, Welcome to *ekatra!* 🎓\n\n` +
-        `A brand new way of learning! Let's start your learning journey through micro-lessons, ` +
-        `shared over WhatsApp! Each 'micro lesson' will focus on specific key learning blocks ` +
-        `and help you get the edge in today's fast-paced world.\n\n` +
-        `You are part of an exclusive group that has this access!\n\n` +
-        `Let's get you started?`, student.phone);
-    await delay(1500);
-    await WA.sendInteractiveButtonsMessage(`Ready to learn? 🚀`, `Tap below to begin your journey!`, "Yes, Let's do this!", student.phone);
+    await sendFlowMessages('new_user_welcome', student.phone, { name }, async () => {
+        // Hardcoded fallback
+        await WA.sendText(
+            `${name}, Welcome to *ekatra!* 🎓\n\n` +
+            `A brand new way of learning! Let's start your learning journey through micro-lessons, ` +
+            `shared over WhatsApp! Each 'micro lesson' will focus on specific key learning blocks ` +
+            `and help you get the edge in today's fast-paced world.\n\n` +
+            `You are part of an exclusive group that has this access!\n\n` +
+            `Let's get you started?`, student.phone);
+        await delay(1500);
+        await WA.sendInteractiveButtonsMessage(`Ready to learn? 🚀`, `Tap below to begin your journey!`, "Yes, Let's do this!", student.phone);
+    });
     await transition(student, 'onboarding_welcome', 'text:first_message', event.text);
 }
 
@@ -146,16 +318,17 @@ async function handleOnboardingLearn(student, event) {
 async function handleOnboardingTopic(student, event) {
     const text = (event.text || '').trim();
     const textLower = text.toLowerCase();
+    const topics = await getAvailableTopics();
 
     // Check pre-built topic by name or number
     let selectedTopic = null;
-    for (let i = 0; i < AVAILABLE_TOPICS.length; i++) {
-        const t = AVAILABLE_TOPICS[i];
+    for (let i = 0; i < topics.length; i++) {
+        const t = topics[i];
         if (textLower === t.toLowerCase() || textLower === `option_${i + 1}` || textLower === String(i + 1)) { selectedTopic = t; break; }
     }
 
     // Also check if they typed "Generate Course" as text (not just button)
-    if (!selectedTopic && (textLower.includes('generate') || textLower === `option_${AVAILABLE_TOPICS.length + 1}` || textLower === String(AVAILABLE_TOPICS.length + 1))) {
+    if (!selectedTopic && (textLower.includes('generate') || textLower === `option_${topics.length + 1}` || textLower === String(topics.length + 1))) {
         await WA.sendText(
             `ekatra is excited to introduce *Alfred*, a MetaAI powered learning assistant ` +
             `that helps you create courses on any topic of your choice. 🤖`, student.phone);
@@ -227,10 +400,23 @@ async function handleAlfredIntro(student, event) {
 /**
  * ALFRED_TOPIC — Waiting for user to type their topic.
  */
+// Known button/command text that should NOT be saved as a topic
+const NON_TOPIC_WORDS = ['start lesson', 'start day', 'start', 'next', 'next module', 'restart', 'reset',
+    'new topic', 'help', 'menu', 'commands', 'remind later', 'get certificate',
+    'yes', 'no', 'casual', 'professional', 'informational', 'english', 'hindi', 'spanish',
+    'generate', 'create', 'ai', 'alfred', 'create course', 'generate course',
+    'option_1', 'option_2', 'option_3'];
+
 async function handleAlfredTopic(student, event) {
     const text = (event.text || '').trim();
     if (text.length < 2) {
         await WA.sendText(`Please type a topic you'd like to learn (e.g. "Project Management for Engineers"):`, student.phone);
+        return;
+    }
+    // Reject known button/command text — prompt for a real topic
+    if (NON_TOPIC_WORDS.includes(text.toLowerCase())) {
+        logger.warn('Button/command text rejected as topic', { phone: student.phone, text });
+        await WA.sendText(`Hmm, that doesn't look like a topic. 🤔\n\nPlease type the subject you'd like to learn, e.g.:\n• Project Management for Engineers\n• Roman Art History\n• Indian Classical Music`, student.phone);
         return;
     }
     await Student.findByIdAndUpdate(student._id, { topic: text });
@@ -334,17 +520,11 @@ async function handleAlfredName(student, event) {
         `I'm sure you'll enjoy this experience. Alfred is now creating your personalized course on *${student.topic}*.\n\n` +
         `You'll get the lessons spread across 3 days, in a fun, engaging way.\n\n` +
         `I'm excited, and I hope you are too! 🚀`, student.phone);
-    await delay(2000);
-    await WA.sendText(
-        `You've been added to the Alfred learning queue! 📋\n\n` +
-        `You can refer Alfred to your friends. The more friends who sign up using your referral, the higher you'll jump in the queue.\n\n` +
-        `Invite your friends to learn with you! Click https://bit.ly/AlfredRef to share!\n` +
-        `Don't miss this chance to access Alfred sooner!`, student.phone);
-
     await transition(student, 'alfred_generating', 'text:name_confirmed', event.text);
 
     // Fire off generation
-    await WA.sendText(`⏳ Alfred is generating your course... This takes about 30-60 seconds.`, student.phone);
+    await delay(2000);
+    await WA.sendText(`⏳ Alfred is now crafting your personalized course... This usually takes about 30–60 seconds. Hang tight!`, student.phone);
     try {
         const success = await generateForStudent(student.phone);
         const updated = await Student.findById(student._id).lean();
@@ -401,30 +581,31 @@ async function handleIdle(student, event) {
 
 async function handleAwaitingStart(student, event) {
     const text = (event.text || '').toLowerCase().trim();
-    if (['start day', 'start', 'next', 'next module'].includes(text)) {
+    if (['start day', 'start', 'start lesson', 'next', 'next module'].includes(text)) {
         const delivered = await deliverModule(student);
         if (delivered) await transition(student, 'awaiting_next', 'button:Start Day', event.text);
     } else {
-        await WA.sendInteractiveButtonsMessage(`Day ${student.nextDay} is waiting! 📚`, `Tap below to start.`, 'Start Day', student.phone);
+        await WA.sendInteractiveButtonsMessage(`Day ${student.nextDay} is waiting! 📚`, `I didn't catch that — tap below to start your lesson!`, 'Start Day', student.phone);
     }
 }
 
 async function handleAwaitingNext(student, event) {
     const text = (event.text || '').toLowerCase().trim();
     if (!['next', 'next module', 'start day'].includes(text)) {
-        await WA.sendInteractiveButtonsMessage(`Day ${student.nextDay}, Module ${student.nextModule} 📖`, `Tap *Next* when ready.`, 'Next', student.phone);
+        await WA.sendInteractiveButtonsMessage(`Day ${student.nextDay}, Module ${student.nextModule} 📖`, `I didn't catch that — tap *Next* when you're ready to continue!`, 'Next', student.phone);
         return;
     }
     const { nextDay, nextModule, progress, completedDay, completedModule } = await advanceProgress(student);
     if (progress === 'Completed') {
         await WA.sendText(`🎉🎊 *Congratulations ${student.name}!*\n\nYou've completed all 9 modules of *${student.topic}*!\n\nPreparing your certificate...`, student.phone);
-        await delay(2000); await WA.sendCourseCompleteTemplate(student.phone, student.name, student.topic);
-        try { await delay(3000); const pdf = await createCertificate(student.name, student.topic); await WA.sendMedia(pdf, student.name, student.phone, `🏆 Your certificate for *${student.topic}*!`); } catch (e) { logger.error('Certificate failed', { error: e.message }); }
-        await delay(3000); await WA.sendFeedbackSurvey(student.phone, student.topic);
+        try { await delay(4000); const pdf = await createCertificate(student.name, student.topic); await WA.sendMedia(pdf, student.name, student.phone, `🏆 Your certificate for *${student.topic}*!`); } catch (e) { logger.error('Certificate failed', { error: e.message }); }
+        await delay(4000); await WA.sendFeedbackSurvey(student.phone, student.topic);
+        await delay(4000); await WA.sendInteractiveDualButtonsMessage(`What next? 🎓`, `Start a new course or restart this one?`, 'New Topic', 'Restart', student.phone);
         await transition(student, 'course_complete', 'button:Next', event.text, { completedDay, completedModule });
     } else if (completedModule === 3) {
-        await WA.sendText(`🌟 *Day ${completedDay} complete!*\n\nGreat work, ${student.name}!`, student.phone);
-        await delay(2000); await WA.sendInteractiveDualButtonsMessage(`Any doubts? 🤔`, `Questions about today's content?`, 'Yes', 'No', student.phone);
+        const modulesDone = completedDay * 3;
+        await WA.sendText(`🌟 *Day ${completedDay} of 3 complete!* (${modulesDone}/9 modules done)\n\nGreat work, ${student.name}! Before we move on — any questions about today's content?`, student.phone);
+        await delay(2000); await WA.sendInteractiveDualButtonsMessage(`Questions? 🤔`, `I can help clarify anything from today's lessons.`, 'Yes', 'No', student.phone);
         await transition(student, 'awaiting_doubt_answer', 'button:Next', event.text, { completedDay, completedModule });
     } else {
         const delivered = await deliverModule(student);
@@ -441,12 +622,12 @@ async function handleAwaitingDoubtAnswer(student, event) {
     } else if (text === 'no') {
         await Student.findByIdAndUpdate(student._id, { doubt: 0 });
         if (student.nextDay <= 3) {
-            await WA.sendText(`Awesome work, ${student.name}! 🌟 See you for Day ${student.nextDay}!`, student.phone);
-            await delay(1500); await WA.sendInteractiveButtonsMessage(`Day ${student.nextDay} is ready! 📚`, `Tap below when ready.`, 'Start Day', student.phone);
-            await transition(student, 'awaiting_start', 'button:No', event.text);
+            await Student.findByIdAndUpdate(student._id, { dayCompletedAt: new Date() });
+            await WA.sendText(`Awesome work today, ${student.name}! 🌟\n\nDay ${student.nextDay} will be unlocked tomorrow at 9 AM. See you then! 👋`, student.phone);
+            await transition(student, 'awaiting_next_day', 'button:No', event.text);
         } else { await WA.sendText(`You've completed the course! 🎉`, student.phone); await transition(student, 'course_complete', 'button:No', event.text); }
     } else {
-        await WA.sendInteractiveDualButtonsMessage(`Any doubts? 🤔`, `Tap *Yes* or *No*.`, 'Yes', 'No', student.phone);
+        await WA.sendInteractiveDualButtonsMessage(`Any doubts? 🤔`, `I didn't catch that — just tap one of the buttons below!`, 'Yes', 'No', student.phone);
     }
 }
 
@@ -459,11 +640,50 @@ async function handleDoubtMode(student, event) {
     await transition(student, 'awaiting_doubt_answer', 'text:doubt_query', text);
 }
 
+async function handleAwaitingNextDay(student, event) {
+    const text = (event.text || '').toLowerCase().trim();
+    // Check if a new calendar day has arrived (IST)
+    const now = new Date();
+    const completedAt = student.dayCompletedAt ? new Date(student.dayCompletedAt) : null;
+    const istOffset = 5.5 * 60 * 60 * 1000; // IST = UTC+5:30
+    const nowIST = new Date(now.getTime() + istOffset);
+    const completedIST = completedAt ? new Date(completedAt.getTime() + istOffset) : null;
+    const isNewDay = !completedIST || nowIST.toDateString() !== completedIST.toDateString();
+
+    if (isNewDay) {
+        // Unlock — transition to awaiting_start
+        await Student.findByIdAndUpdate(student._id, { dayCompletedAt: null });
+        await WA.sendText(`Good morning, ${student.name}! ☀️ Day ${student.nextDay} is now unlocked!`, student.phone);
+        await delay(1500);
+        await WA.sendInteractiveButtonsMessage(`Day ${student.nextDay} is ready! 📚`, `Tap below to begin today's lessons.`, 'Start Day', student.phone);
+        await transition(student, 'awaiting_start', 'text:day_unlocked', event.text);
+    } else {
+        // Still locked
+        await WA.sendText(`⏳ Day ${student.nextDay} will be unlocked tomorrow at 9 AM.\n\nTake some time to review today's lessons — see you tomorrow, ${student.name}! 👋`, student.phone);
+    }
+}
+
 async function handleCourseComplete(student, event) {
     const text = (event.text || '').toLowerCase().trim();
     if (text === 'restart' || text === 'reset') return 'restart';
+
+    // Handle "Get Certificate" button from course_complete template
+    if (text === 'get certificate') {
+        await WA.sendText(`🏆 Generating your certificate for *${student.topic}*...`, student.phone);
+        try {
+            const pdf = await createCertificate(student.name, student.topic);
+            await WA.sendMedia(pdf, student.name, student.phone, `🏆 Your certificate for *${student.topic}*!`);
+        } catch (e) {
+            logger.error('Certificate re-generation failed', { error: e.message });
+            await WA.sendText(`Sorry, couldn't generate the certificate right now. Try again later.`, student.phone);
+        }
+        await delay(2000);
+        await WA.sendInteractiveDualButtonsMessage(`What next?`, `Start a new course or restart this one?`, 'New Topic', 'Restart', student.phone);
+        return;
+    }
+
     await WA.sendText(`You've completed *${student.topic}*! 🎓\n\nWant to learn something new?`, student.phone);
-    await delay(1500); await WA.sendInteractiveDualButtonsMessage(`What next?`, `Restart or pick a new topic?`, 'Restart', 'New Topic', student.phone);
+    await delay(1500); await WA.sendInteractiveDualButtonsMessage(`What next?`, `Start a new course or restart this one?`, 'New Topic', 'Restart', student.phone);
 }
 
 
@@ -479,6 +699,7 @@ const stepHandlers = {
     alfred_language: handleAlfredLanguage, alfred_name: handleAlfredName,
     alfred_generating: handleAlfredGenerating,
     idle: handleIdle, awaiting_start: handleAwaitingStart, awaiting_next: handleAwaitingNext,
+    awaiting_next_day: handleAwaitingNextDay,
     awaiting_doubt_answer: handleAwaitingDoubtAnswer, doubt_mode: handleDoubtMode,
     course_complete: handleCourseComplete,
 };
@@ -517,11 +738,49 @@ async function handle(event) {
         return;
     }
 
-    if (['hi', 'hello', 'hey'].includes(text) && !student.flowStep.startsWith('onboarding') && student.flowStep !== 'new_user') {
+    if (['hi', 'hello', 'hey', 'start'].includes(text) && !student.flowStep.startsWith('onboarding') && student.flowStep !== 'new_user' && student.flowStep !== 'awaiting_next_day') {
         student.flowStep = 'idle'; await handleIdle(student, event); return;
     }
 
-    if (['generate', 'create', 'ai', 'create course', 'alfred'].includes(text) && ['idle', 'course_complete', 'awaiting_start'].includes(student.flowStep)) {
+    // Fuzzy trigger phrase matching (e.g. "Hello, tell me about ekatra" at 90% confidence)
+    const triggerMatch = matchTriggerPhrase(text);
+    if (triggerMatch && triggerMatch.action === 'start_onboarding') {
+        logger.info('Trigger phrase matched', { phone, phrase: triggerMatch.phrase, score: triggerMatch.score.toFixed(2) });
+        if (student.flowStep === 'new_user') {
+            await handleNewUser(student, event);
+        } else if (student.flowStep === 'awaiting_next_day') {
+            await handleAwaitingNextDay(student, event);
+        } else {
+            student.flowStep = 'idle'; await handleIdle(student, event);
+        }
+        return;
+    }
+
+    // Also catch greetings at the start of a longer message
+    if (/^(hi|hello|hey)\b/.test(text) && !student.flowStep.startsWith('onboarding') && student.flowStep !== 'new_user' && student.flowStep !== 'awaiting_next_day') {
+        student.flowStep = 'idle'; await handleIdle(student, event); return;
+    }
+
+    if (text === 'remind later') {
+        await WA.sendText(`No problem, ${student.name || 'Learner'}! 👋 I'll remind you later. Type *hi* whenever you're ready to continue.`, phone);
+        return;
+    }
+
+    if (['help', 'menu', 'commands'].includes(text)) {
+        await sendFlowMessages('help_menu', phone, {}, async () => {
+            await WA.sendText(
+                `📋 *Here's what you can do:*\n\n` +
+                `• *next* — continue to the next lesson\n` +
+                `• *restart* — start your current course over\n` +
+                `• *new topic* — pick a different course\n` +
+                `• *alfred* — generate an AI course on any topic\n` +
+                `• *help* — show this menu\n\n` +
+                `During doubt mode, just type your question and I'll answer! 💡`, phone);
+        });
+        return;
+    }
+
+    if (['generate', 'create', 'ai', 'create course', 'generate course', 'alfred'].includes(text) && ['idle', 'course_complete', 'awaiting_start'].includes(student.flowStep)) {
         await WA.sendText(
             `ekatra is excited to introduce *Alfred*, a MetaAI powered learning assistant ` +
             `that helps you create courses on any topic of your choice. 🤖`, phone);
