@@ -103,11 +103,12 @@ const sendDailyReminders = async () => {
         }
         logger.info('Day-locked students unlocked', { count: lockedStudents.length });
 
-        // 2. Send reminders to students who haven't started yet (idle/awaiting_start)
+        // 2. Send reminders only to idle students (not newly unlocked ones)
         const students = await Student.find({
             courseStatus: 'Content Created',
             progress: 'Pending',
-            flowStep: { $in: ['awaiting_start', 'idle'] }
+            flowStep: 'idle',
+            lastInteractionAt: { $lt: new Date(Date.now() - 24 * 60 * 60 * 1000) }
         }).lean();
 
         for (const student of students) {
