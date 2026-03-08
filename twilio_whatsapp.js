@@ -18,6 +18,8 @@ require('dotenv').config();
 const twilio = require('twilio');
 const https = require('https');
 const { createLogger } = require('./utils/logger');
+const { uploadPDFToS3 } = require('./utils/s3Upload');
+const { uploadPDFToCloudinary } = require('./utils/cloudinaryUpload');
 
 const logger = createLogger('whatsapp');
 
@@ -81,8 +83,7 @@ const sendText = async (msg, senderID) => {
 
 /**
  * Send a media file (PDF, image) via WhatsApp
- * Twilio requires a publicly accessible URL — buffers are not supported directly.
- * If a buffer is passed, sends caption text only (upload to blob storage for production).
+ * Twilio requires a publicly accessible URL, so buffers are uploaded first.
  */
 const sendMedia = async (bufferOrUrl, filename, senderID, caption) => {
     logger.info('Sending media', { phone: senderID, filename });
@@ -100,13 +101,29 @@ const sendMedia = async (bufferOrUrl, filename, senderID, caption) => {
 
         if (typeof bufferOrUrl === 'string' && bufferOrUrl.startsWith('http')) {
             msgParams.mediaUrl = [bufferOrUrl];
+        } else if (Buffer.isBuffer(bufferOrUrl)) {
+            const safeFilename = String(filename || 'certificate')
+                .trim()
+                .replace(/\.[^.]+$/, '')
+                .replace(/[^a-zA-Z0-9_-]+/g, '_')
+                .replace(/^_+|_+$/g, '') || 'certificate';
+            let mediaUrl;
+            try {
+                mediaUrl = await uploadPDFToS3(bufferOrUrl, safeFilename);
+            } catch (s3Error) {
+                logger.warn('S3 upload failed, falling back to Cloudinary', { error: s3Error.message, phone: senderID });
+                mediaUrl = await uploadPDFToCloudinary(bufferOrUrl, safeFilename);
+            }
+            msgParams.mediaUrl = [mediaUrl];
+        } else {
+            throw new Error('Unsupported media payload; expected URL or Buffer');
         }
-        // TODO: For buffer (e.g. PDF certificate), upload to AWS S3 → get URL → set mediaUrl
 
         const message = await client.messages.create(msgParams);
         logger.info('Media sent', { sid: message.sid, phone: senderID });
     } catch (error) {
         logger.error('Failed to send media', { error: error.message, phone: senderID });
+        throw error;
     }
 };
 

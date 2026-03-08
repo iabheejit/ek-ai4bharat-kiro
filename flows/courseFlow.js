@@ -20,8 +20,8 @@ const CourseContent = require('../models/CourseContent');
 const ConversationLog = require('../models/ConversationLog');
 const WA = require('../twilio_whatsapp');
 const { solveUserQuery, generateForStudent } = require('../llama');
-const { createCertificate } = require('../certificate');
 const { createLogger } = require('../utils/logger');
+const { getOrCreateCertificate } = require('../utils/certificateStore');
 const { markdownToWhatsApp } = require('../utils/whatsappFormatter');
 const FlowTemplate = require('../models/FlowTemplate');
 
@@ -598,7 +598,14 @@ async function handleAwaitingNext(student, event) {
     const { nextDay, nextModule, progress, completedDay, completedModule } = await advanceProgress(student);
     if (progress === 'Completed') {
         await WA.sendText(`🎉🎊 *Congratulations ${student.name}!*\n\nYou've completed all 9 modules of *${student.topic}*!\n\nPreparing your certificate...`, student.phone);
-        try { await delay(4000); const pdf = await createCertificate(student.name, student.topic); await WA.sendMedia(pdf, student.name, student.phone, `🏆 Your certificate for *${student.topic}*!`); } catch (e) { logger.error('Certificate failed', { error: e.message }); }
+        try {
+            await delay(4000);
+            const certificate = await getOrCreateCertificate(student);
+            await WA.sendMedia(certificate.url, `${student.name}_${student.topic}`, student.phone, `🏆 Your certificate for *${student.topic}*!`);
+        } catch (e) {
+            logger.error('Certificate failed', { error: e.message });
+            await WA.sendText(`Sorry, I couldn't deliver your certificate right now. Reply *Get Certificate* and I'll try again.`, student.phone);
+        }
         await delay(4000); await WA.sendFeedbackSurvey(student.phone, student.topic);
         await delay(4000); await WA.sendInteractiveDualButtonsMessage(`What next? 🎓`, `Start a new course or restart this one?`, 'New Topic', 'Restart', student.phone);
         await transition(student, 'course_complete', 'button:Next', event.text, { completedDay, completedModule });
@@ -669,10 +676,10 @@ async function handleCourseComplete(student, event) {
 
     // Handle "Get Certificate" button from course_complete template
     if (text === 'get certificate') {
-        await WA.sendText(`🏆 Generating your certificate for *${student.topic}*...`, student.phone);
+        await WA.sendText(`🏆 Fetching your certificate for *${student.topic}*...`, student.phone);
         try {
-            const pdf = await createCertificate(student.name, student.topic);
-            await WA.sendMedia(pdf, student.name, student.phone, `🏆 Your certificate for *${student.topic}*!`);
+            const certificate = await getOrCreateCertificate(student);
+            await WA.sendMedia(certificate.url, `${student.name}_${student.topic}`, student.phone, `🏆 Your certificate for *${student.topic}*!`);
         } catch (e) {
             logger.error('Certificate re-generation failed', { error: e.message });
             await WA.sendText(`Sorry, couldn't generate the certificate right now. Try again later.`, student.phone);
@@ -722,7 +729,7 @@ async function handle(event) {
 
     // ─── Global overrides ───
     if ((text === 'restart' || text === 'reset') && !['new_user', 'onboarding_welcome', 'onboarding_learn'].includes(student.flowStep)) {
-        await Student.findByIdAndUpdate(student._id, { nextDay: 1, nextModule: 1, progress: 'Pending', moduleCompleted: 0, dayCompleted: 0, doubt: 0, flowStep: 'onboarding_topic', topic: '', courseStatus: '' });
+        await Student.findByIdAndUpdate(student._id, { nextDay: 1, nextModule: 1, progress: 'Pending', moduleCompleted: 0, dayCompleted: 0, doubt: 0, flowStep: 'onboarding_topic', topic: '', courseStatus: '', certificate: null });
         Object.assign(student, { nextDay: 1, nextModule: 1, flowStep: 'onboarding_topic', topic: '' });
         await WA.sendText(`🔄 Let's pick a new topic, ${student.name || 'Learner'}!`, phone);
         await delay(1000); await sendTopicSelection(phone);
@@ -731,7 +738,7 @@ async function handle(event) {
     }
 
     if (text === 'new topic' && student.flowStep === 'course_complete') {
-        await Student.findByIdAndUpdate(student._id, { nextDay: 1, nextModule: 1, progress: 'Pending', moduleCompleted: 0, dayCompleted: 0, doubt: 0, flowStep: 'onboarding_topic', topic: '', courseStatus: '' });
+        await Student.findByIdAndUpdate(student._id, { nextDay: 1, nextModule: 1, progress: 'Pending', moduleCompleted: 0, dayCompleted: 0, doubt: 0, flowStep: 'onboarding_topic', topic: '', courseStatus: '', certificate: null });
         Object.assign(student, { flowStep: 'onboarding_topic', topic: '' });
         await sendTopicSelection(phone);
         await transition(student, 'onboarding_topic', 'button:New Topic', event.text);
@@ -798,7 +805,7 @@ async function handle(event) {
 
     const result = await handler(student, event);
     if (result === 'restart') {
-        await Student.findByIdAndUpdate(student._id, { nextDay: 1, nextModule: 1, progress: 'Pending', moduleCompleted: 0, dayCompleted: 0, doubt: 0, flowStep: 'awaiting_start' });
+        await Student.findByIdAndUpdate(student._id, { nextDay: 1, nextModule: 1, progress: 'Pending', moduleCompleted: 0, dayCompleted: 0, doubt: 0, flowStep: 'awaiting_start', certificate: null });
         Object.assign(student, { nextDay: 1, nextModule: 1 });
         await WA.sendText(`Course reset! 🔄 Let's go again, ${student.name}.`, phone);
         await delay(1500); await WA.sendInteractiveButtonsMessage(`Day 1 is ready! 📚`, `Tap below!`, 'Start Day', phone);

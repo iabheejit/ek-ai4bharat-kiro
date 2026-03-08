@@ -111,9 +111,9 @@ dist
 *_old.js
 *.backup
 
-# Certificate files (should not be committed)
+# Certificate PDF files (should not be committed)
 *.pdf
-certificate.*
+certificates/
 
 # IDE files
 .vscode/

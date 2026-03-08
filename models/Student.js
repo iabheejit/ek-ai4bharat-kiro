@@ -1,5 +1,36 @@
 const mongoose = require('mongoose');
 
+const certificateSchema = new mongoose.Schema({
+    url: {
+        type: String,
+        default: ''
+    },
+    objectKey: {
+        type: String,
+        default: ''
+    },
+    bucket: {
+        type: String,
+        default: ''
+    },
+    provider: {
+        type: String,
+        default: ''
+    },
+    courseName: {
+        type: String,
+        default: ''
+    },
+    recipientName: {
+        type: String,
+        default: ''
+    },
+    generatedAt: {
+        type: Date,
+        default: null
+    }
+}, { _id: false });
+
 const studentSchema = new mongoose.Schema({
     phone: {
         type: String,
@@ -111,6 +142,10 @@ const studentSchema = new mongoose.Schema({
     course: {
         type: String,
         default: ''
+    },
+    certificate: {
+        type: certificateSchema,
+        default: null
     }
 }, {
     timestamps: true
