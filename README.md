@@ -7,6 +7,14 @@
 
 AI-powered WhatsApp learning platform that delivers personalized micro-courses through conversational interfaces. Built for the AI4Bharat initiative to make quality education accessible.
 
+## 🏆 AI for Bharat Hackathon 2025
+
+This project is submitted for the **[AI for Bharat Hackathon](https://vision.hack2skill.com/event/ai-for-bharat)** organized by Hack2skill.
+
+**Challenge Track**: 03 - AI for Communities, Access & Public Impact
+
+**Mission**: Democratizing education through AI-powered conversational learning on WhatsApp, making quality education accessible to millions across India without requiring app installations or internet-heavy platforms.
+
 ## 🎯 Live Demo
 
 **Admin Dashboard**: [https://ekatra-dashboard.pages.dev](https://ekatra-dashboard.pages.dev)
@@ -17,12 +25,20 @@ Experience the admin interface for managing students, courses, and AI-generated 
 
 ## 🌟 Features
 
+### Core Learning Experience
 - **🤖 AI Course Generation**: Personalized 3-day courses using AWS Bedrock (Meta Llama 3)
 - **💬 WhatsApp Native**: No app installation required, works via Twilio WhatsApp API
 - **📚 Structured Learning**: 9 modules across 3 days with automated delivery
 - **🎓 Certificates**: Automated PDF generation upon completion
 - **📊 Progress Tracking**: Real-time student engagement monitoring
 - **🔒 Production Ready**: Logging, monitoring, security, and error handling
+
+### Impact on Communities & Public Access
+- **Zero Barrier Entry**: Works on any phone with WhatsApp - no smartphone or app download required
+- **Language Accessibility**: Supports multiple Indian languages through AI-powered content generation
+- **Offline-First Design**: Minimal data usage, works on 2G/3G networks
+- **Scalable Impact**: Can serve millions of learners simultaneously through cloud infrastructure
+- **Free & Open**: No cost to learners, democratizing access to quality education
 
 ## �️ Architecture
 
@@ -190,9 +206,12 @@ ISC License - See [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- **AI4Bharat Initiative** - AI accessibility in Indian languages
+- **[AI4Bharat Hackathon](https://vision.hack2skill.com/event/ai-for-bharat)** - Organized by Hack2skill
+- **Challenge Track**: AI for Communities, Access & Public Impact
 - **Ekatra Education** - Democratizing quality education
 - AWS Bedrock, Twilio, MongoDB, Express.js teams
+
+This project demonstrates how AI can bridge the digital divide and make quality education accessible to every Indian, regardless of their location, device, or economic background.
 
 ## 📞 Support
 
