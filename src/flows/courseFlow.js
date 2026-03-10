@@ -18,8 +18,8 @@
 const Student = require('../models/Student');
 const CourseContent = require('../models/CourseContent');
 const ConversationLog = require('../models/ConversationLog');
-const WA = require('../twilio_whatsapp');
-const { solveUserQuery, generateForStudent } = require('../llama');
+const WA = require('../services/twilio_whatsapp');
+const { solveUserQuery, generateForStudent } = require('../services/llama');
 const { createLogger } = require('../utils/logger');
 const { getOrCreateCertificate } = require('../utils/certificateStore');
 const { markdownToWhatsApp } = require('../utils/whatsappFormatter');

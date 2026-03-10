@@ -9,7 +9,7 @@
 
 const path = require('path');
 const dotenv = require('dotenv');
-if (process.env.NODE_ENV !== 'production') dotenv.config({ path: path.join(__dirname, '.env') });
+if (process.env.NODE_ENV !== 'production') dotenv.config({ path: path.join(__dirname, '../.env') });
 
 // Prevent MaxListenersExceeded warnings (multiple Winston loggers + graceful shutdown)
 process.setMaxListeners(25);
@@ -31,13 +31,13 @@ if (!process.env.ADMIN_API_KEY || process.env.ADMIN_API_KEY.trim() === '') {
     process.exit(1);
 }
 
-const { connectDB } = require('./db');
-const { createCertificate } = require('./certificate');
+const { connectDB } = require('./config/db');
+const { createCertificate } = require('./services/certificate');
 const Student = require('./models/Student');
 const CourseContent = require('./models/CourseContent');
-const WA = require('./twilio_whatsapp');
-const { solveUserQuery, generateForStudent } = require('./llama');
-const course_approval = require('./course_status');
+const WA = require('./services/twilio_whatsapp');
+const { solveUserQuery, generateForStudent } = require('./services/llama');
+const course_approval = require('./services/course_status');
 const courseFlow = require('./flows/courseFlow');
 
 const ConversationLog = require('./models/ConversationLog');

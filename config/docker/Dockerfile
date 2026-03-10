@@ -15,13 +15,10 @@ RUN npm ci --only=production && \
     npm cache clean --force
 
 # Copy source files
-COPY server.js db.js db_methods.js twilio_whatsapp.js llama.js course_status.js image.js certificate.js ./
-COPY models/ ./models/
-COPY middleware/ ./middleware/
-COPY utils/ ./utils/
-COPY flows/ ./flows/
-COPY public/ ./public/
+COPY src/ ./src/
 COPY scripts/ ./scripts/
+COPY config/ ./config/
+COPY docs/ ./docs/
 COPY assets/ ./assets/ 2>/dev/null || true
 COPY fonts/ ./fonts/ 2>/dev/null || true
 
@@ -37,4 +34,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+CMD ["node", "src/server.js"]

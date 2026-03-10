@@ -1,5 +1,5 @@
 const Student = require('../models/Student');
-const { createCertificate } = require('../certificate');
+const { createCertificate } = require('../services/certificate');
 const { uploadPDFToS3, getPDFDownloadUrl } = require('./s3Upload');
 const { uploadPDFToCloudinary } = require('./cloudinaryUpload');
 const { createLogger } = require('./logger');

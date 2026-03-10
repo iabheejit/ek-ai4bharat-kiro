@@ -1,6 +1,6 @@
 const os = require('os');
 const { createLogger } = require('./logger');
-const { getConnectionStatus } = require('../db');
+const { getConnectionStatus } = require('../config/db');
 
 const logger = createLogger('monitoring');
 

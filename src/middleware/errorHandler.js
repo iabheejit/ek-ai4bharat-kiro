@@ -159,7 +159,7 @@ const globalErrorHandler = (error, req, res, next) => {
 };
 
 const gracefulShutdown = (server) => {
-    const { disconnectDB } = require('../db');
+    const { disconnectDB } = require('../config/db');
 
     ['SIGTERM', 'SIGINT'].forEach(signal => {
         process.on(signal, async () => {

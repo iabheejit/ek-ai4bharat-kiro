@@ -11,12 +11,12 @@
 
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const mongoose = require('mongoose');
-const Student = require('../models/Student');
-const CourseContent = require('../models/CourseContent');
+const Student = require('../src/models/Student');
+const CourseContent = require('../src/models/CourseContent');
 
 const TEST_PHONE = '919766072308';
-const AlfredWaitlist = require('../models/AlfredWaitlist');
-const ConversationLog = require('../models/ConversationLog');
+const AlfredWaitlist = require('../src/models/AlfredWaitlist');
+const ConversationLog = require('../src/models/ConversationLog');
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/socrates';
 
